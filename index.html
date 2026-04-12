@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -199,6 +200,46 @@ input, textarea { font-family: inherit; }
   flex: 1; padding: 10px 0; border-radius: 10px; border: 1px solid var(--c-border);
   background: transparent; color: var(--c-text); font-size: 13px; font-weight: 600;
 }
+
+/* Menu */
+.menu-btn {
+  background: var(--c-pale); border: none; color: var(--c-deep);
+  border-radius: 8px; width: 34px; height: 34px;
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+}
+.menu-btn:active { background: var(--c-light); }
+.menu-overlay {
+  position: fixed; inset: 0; background: rgba(90,143,160,0.3); z-index: 150;
+  backdrop-filter: blur(2px);
+}
+.menu-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  max-width: 500px; margin: 0 auto;
+  background: var(--c-card); border-radius: 16px 16px 0 0;
+  padding: 16px 20px 28px; z-index: 151;
+  border-top: 2px solid var(--c-border);
+  box-shadow: 0 -8px 30px rgba(90,143,160,0.15);
+}
+.menu-handle { width: 36px; height: 4px; background: var(--c-border); border-radius: 2px; margin: 0 auto 14px; }
+.menu-title { font-size: 14px; font-weight: 700; color: var(--c-deep); margin-bottom: 12px; }
+.menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-radius: 10px;
+  background: var(--c-bg); border: 1px solid var(--c-border);
+  margin-bottom: 8px; font-size: 13px; font-weight: 600;
+  color: var(--c-text); cursor: pointer; width: 100%;
+  text-align: left;
+}
+.menu-item:active { background: var(--c-pale); }
+.menu-item .icon { font-size: 18px; width: 24px; text-align: center; }
+.menu-item .desc { font-size: 10px; font-weight: 400; color: var(--c-text2); margin-top: 1px; }
+.menu-cancel {
+  width: 100%; padding: 12px 0; border-radius: 10px;
+  border: 1px solid var(--c-border); background: var(--c-card);
+  color: var(--c-text2); font-size: 13px; font-weight: 600;
+  margin-top: 4px;
+}
+input[type="file"].hidden-input { display: none; }
 </style>
 </head>
 <body>
@@ -241,6 +282,7 @@ let state = {
   showForm: false,
   editing: null,
   confirmDeleteId: null,
+  showMenu: false,
 };
 
 function getWeeks(y,m){
@@ -294,6 +336,7 @@ function render(){
   <div class="header">
     <div class="header-title">${month+1}<span style="font-size:14px;font-weight:500">月</span><span>${year}</span></div>
     <div class="month-total"><b>¥${mTotal.toLocaleString()}</b></div>
+    <button class="menu-btn" onclick="toggleMenu()">☰</button>
   </div>
   <div class="nav">
     <div class="nav-btns">
@@ -400,6 +443,30 @@ function render(){
     </div>`;
   }
 
+  // Menu sheet
+  if(state.showMenu){
+    h+=`<div class="menu-overlay" onclick="toggleMenu()"></div>
+    <div class="menu-sheet" onclick="event.stopPropagation()">
+      <div class="menu-handle"></div>
+      <div class="menu-title">データ管理</div>
+      <button class="menu-item" onclick="exportJSON()">
+        <span class="icon">📦</span>
+        <div><div>バックアップ (JSON)</div><div class="desc">全案件データをエクスポート</div></div>
+      </button>
+      <button class="menu-item" onclick="triggerImport()">
+        <span class="icon">📥</span>
+        <div><div>インポート (JSON)</div><div class="desc">バックアップファイルから復元</div></div>
+      </button>
+      <button class="menu-item" onclick="exportCSV()">
+        <span class="icon">📊</span>
+        <div><div>CSV出力</div><div class="desc">Excelで開ける形式で書き出し</div></div>
+      </button>
+      <button class="menu-cancel" onclick="toggleMenu()">閉じる</button>
+    </div>`;
+  }
+
+  h+=`<input type="file" accept=".json" class="hidden-input" id="importInput" onchange="handleImport(event)">`;
+
   document.getElementById("app").innerHTML=h;
 }
 
@@ -438,6 +505,78 @@ function execDel(){
   if(state.selectedId===state.confirmDeleteId) state.selectedId=null;
   saveProjects(state.projects);
   state.confirmDeleteId=null; state.showForm=false; state.editing=null; render();
+}
+
+function toggleMenu(){ state.showMenu=!state.showMenu; render(); }
+
+function downloadFile(filename, content, type){
+  const blob=new Blob([content],{type});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=filename; document.body.appendChild(a);
+  a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function exportJSON(){
+  const data=JSON.stringify(state.projects, null, 2);
+  const date=toDS(new Date());
+  downloadFile(`anken_backup_${date}.json`, data, "application/json");
+  state.showMenu=false; render();
+}
+
+function triggerImport(){
+  state.showMenu=false; render();
+  setTimeout(()=>{ document.getElementById("importInput").click(); },100);
+}
+
+function handleImport(e){
+  const file=e.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(!Array.isArray(data)){ alert("無効なファイル形式です"); return; }
+      const valid=data.every(p=>p.name&&p.start&&p.end);
+      if(!valid){ alert("データ形式が正しくありません"); return; }
+      if(!confirm(`${data.length}件の案件をインポートします。\n現在のデータは上書きされます。\nよろしいですか？`)) return;
+      state.projects=data;
+      saveProjects(state.projects);
+      state.selectedId=null;
+      render();
+      alert("インポートが完了しました");
+    }catch(err){
+      alert("ファイルの読み込みに失敗しました");
+    }
+  };
+  reader.readAsText(file);
+  e.target.value="";
+}
+
+function exportCSV(){
+  const header=["案件名","クライアント","開始日","終了日","金額","ステータス","メモ"];
+  const statusLabel={waiting:"着手前",active:"進行中",done:"完了"};
+  const rows=state.projects.map(p=>[
+    csvEscape(p.name),
+    csvEscape(p.client||""),
+    p.start,
+    p.end,
+    p.amount||0,
+    statusLabel[p.status]||p.status,
+    csvEscape(p.notes||""),
+  ].join(","));
+  const bom="\uFEFF";
+  const csv=bom+header.join(",")+"\n"+rows.join("\n");
+  const date=toDS(new Date());
+  downloadFile(`anken_${date}.csv`, csv, "text/csv;charset=utf-8");
+  state.showMenu=false; render();
+}
+
+function csvEscape(s){
+  if(s.includes(",")||s.includes('"')||s.includes("\n")){
+    return '"'+s.replace(/"/g,'""')+'"';
+  }
+  return s;
 }
 
 render();
