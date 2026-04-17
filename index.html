@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -240,6 +239,22 @@ input, textarea { font-family: inherit; }
   margin-top: 4px;
 }
 input[type="file"].hidden-input { display: none; }
+
+/* Category tabs */
+.cat-tabs {
+  display: flex; gap: 0; padding: 0 16px 8px;
+}
+.cat-tab {
+  flex: 1; padding: 7px 0; font-size: 12px; font-weight: 700;
+  border: 1.5px solid var(--c-border); background: transparent;
+  color: var(--c-text2); cursor: pointer; transition: all 0.15s;
+}
+.cat-tab:first-child { border-radius: 8px 0 0 8px; }
+.cat-tab:last-child  { border-radius: 0 8px 8px 0; }
+.cat-tab:not(:first-child) { border-left: none; }
+.cat-tab.active-all    { background: var(--c-deep);  border-color: var(--c-deep);  color: #fff; }
+.cat-tab.active-design { background: #8a67a5; border-color: #8a67a5; color: #fff; }
+.cat-tab.active-farm   { background: #78b795; border-color: #78b795; color: #fff; }
 </style>
 </head>
 <body>
@@ -252,11 +267,23 @@ const STATUS = {
   active:  { label:"進行中", color:"#5a8fa0", bg:"#d4e8ec" },
   done:    { label:"完了",   color:"#6ab08a", bg:"#e0f2e8" },
 };
-const BAR_COLORS = [
-  "#87b7c4","#d4838a","#5a8fa0","#aed4da",
-  "#c49087","#6ab08a","#b087c4","#87c4a0",
-  "#c4b087","#8a87c4",
-];
+const CATEGORY = {
+  design:    { label:"デザイン", icon:"🎨" },
+  farm:      { label:"農業",     icon:"🌾" },
+};
+// 6色マトリクス: [カテゴリ][ステータス]
+const BAR_COLOR_MAP = {
+  design: {
+    waiting: { main:"#8a67a5", sub:"#6f4f8a" },  // デザイン着手前
+    active:  { main:"#347fb7", sub:"#1a659d" },  // デザイン進行中
+    done:    { main:"#b8c4c8", sub:"#9eb0b5" },  // デザイン完了（共通グレー）
+  },
+  farm: {
+    waiting: { main:"#cb8f6e", sub:"#b37455" },  // 農業着手前
+    active:  { main:"#79ac69", sub:"#5e9250" },  // 農業進行中
+    done:    { main:"#b8c4c8", sub:"#9eb0b5" },  // 農業完了（共通グレー）
+  },
+};
 const DOW = ["日","月","火","水","木","金","土"];
 const LS_KEY = "gantt_projects_v1";
 
@@ -267,9 +294,9 @@ function sameDay(a,b){ return a.getFullYear()===b.getFullYear()&&a.getMonth()===
 function loadProjects(){
   try{ const d=JSON.parse(localStorage.getItem(LS_KEY)); if(Array.isArray(d)&&d.length) return d; } catch(e){}
   return [
-    {id:"1",name:"ロゴデザイン",client:"山田商店",start:"2026-04-05",end:"2026-04-18",amount:30000,status:"active",notes:""},
-    {id:"2",name:"チラシ制作",client:"カフェひだまり",start:"2026-04-10",end:"2026-04-20",amount:20000,status:"waiting",notes:""},
-    {id:"3",name:"名刺デザイン",client:"佐藤工務店",start:"2026-04-01",end:"2026-04-08",amount:10000,status:"done",notes:"納品済み"},
+    {id:"1",name:"ロゴデザイン",client:"山田商店",start:"2026-04-05",end:"2026-04-18",amount:30000,status:"active",category:"design",notes:""},
+    {id:"2",name:"チラシ制作",client:"カフェひだまり",start:"2026-04-10",end:"2026-04-20",amount:20000,status:"waiting",category:"design",notes:""},
+    {id:"3",name:"名刺デザイン",client:"佐藤工務店",start:"2026-04-01",end:"2026-04-08",amount:10000,status:"done",category:"design",notes:"納品済み"},
   ];
 }
 function saveProjects(p){ localStorage.setItem(LS_KEY,JSON.stringify(p)); }
@@ -283,6 +310,7 @@ let state = {
   editing: null,
   confirmDeleteId: null,
   showMenu: false,
+  categoryFilter: "all",
 };
 
 function getWeeks(y,m){
@@ -323,11 +351,13 @@ function getBars(week, projects){
 }
 
 function render(){
-  const {year,month,projects,selectedId,showForm,editing,confirmDeleteId}=state;
+  const {year,month,projects,selectedId,showForm,editing,confirmDeleteId,categoryFilter}=state;
   const today=new Date();
   const weeks=getWeeks(year,month);
-  const sel=projects.find(p=>p.id===selectedId)||null;
-  const mTotal=projects.filter(p=>{
+  // カテゴリフィルター適用
+  const filteredProjects = categoryFilter==="all" ? projects : projects.filter(p=>(p.category||"design")===categoryFilter);
+  const sel=filteredProjects.find(p=>p.id===selectedId)||null;
+  const mTotal=filteredProjects.filter(p=>{
     const ps=fromDS(p.start),pe=fromDS(p.end);
     return ps<=new Date(year,month+1,0)&&pe>=new Date(year,month,1);
   }).reduce((s,p)=>s+(p.amount||0),0);
@@ -346,11 +376,16 @@ function render(){
     </div>
     <button class="btn-new" onclick="openNew()">＋ 新規</button>
   </div>
+  <div class="cat-tabs">
+    <button class="cat-tab${categoryFilter==="all"?" active-all":""}" onclick="setCatFilter('all')">🗂 全体</button>
+    <button class="cat-tab${categoryFilter==="design"?" active-design":""}" onclick="setCatFilter('design')">🎨 デザイン</button>
+    <button class="cat-tab${categoryFilter==="farm"?" active-farm":""}" onclick="setCatFilter('farm')">🌾 農業</button>
+  </div>
   <div class="dow-row">${DOW.map((d,i)=>`<div class="dow-cell${i===0?' sun':''}${i===6?' sat':''}">${d}</div>`).join("")}</div>
   <div class="cal-body" style="padding-bottom:${sel&&!showForm?'260px':'20px'}">`;
 
   weeks.forEach((week,wi)=>{
-    const {bars,rc}=getBars(week,projects);
+    const {bars,rc}=getBars(week,filteredProjects);
     h+=`<div class="week-row"><div class="date-row">`;
     week.forEach((day,di)=>{
       const inM=day.getMonth()===month;
@@ -367,10 +402,13 @@ function render(){
       const left=`calc(${(b.sc/7)*100}% + 2px)`;
       const width=`calc(${(b.span/7)*100}% - 4px)`;
       const top=b.row*22;
-      const col=BAR_COLORS[b.pi%BAR_COLORS.length];
+      const cat=b.p.category||"design";
+      const stKey=b.p.status||"waiting";
+      const colSet=(BAR_COLOR_MAP[cat]||BAR_COLOR_MAP.design)[stKey]||(BAR_COLOR_MAP.design.waiting);
+      const col=colSet.main, col2=colSet.sub;
       const rad=b.isS&&b.isE?"5px":b.isS?"5px 1px 1px 5px":b.isE?"1px 5px 5px 1px":"1px";
       const selCls=b.p.id===selectedId?"selected":"";
-      h+=`<div class="bar ${selCls}" onclick="selectP('${b.p.id}')" style="left:${left};width:${width};top:${top}px;background:linear-gradient(135deg,${col},${col}dd);border-radius:${rad};box-shadow:0 1px 3px ${col}44"><span>${b.p.name}</span></div>`;
+      h+=`<div class="bar ${selCls}" onclick="selectP('${b.p.id}')" style="left:${left};width:${width};top:${top}px;background:linear-gradient(135deg,${col},${col2});border-radius:${rad};box-shadow:0 1px 3px ${col}55"><span>${b.p.name}</span></div>`;
     });
     h+=`</div></div>`;
   });
@@ -392,6 +430,7 @@ function render(){
       <div class="chips">
         <span class="chip"><span class="label">期間: </span><span class="val">${sel.start} 〜 ${sel.end}</span></span>
         <span class="chip"><span class="label">金額: </span><span class="val">¥${(sel.amount||0).toLocaleString()}</span></span>
+        <span class="chip"><span class="val">${(CATEGORY[sel.category||"design"]||CATEGORY.design).icon} ${(CATEGORY[sel.category||"design"]||CATEGORY.design).label}</span></span>
         <span class="status-badge" style="background:${st.bg};color:${st.color}">${st.label}</span>
       </div>
       <div class="status-btns">
@@ -415,6 +454,16 @@ function render(){
           <div class="field"><div class="field-label">終了日</div><input type="date" class="field-input" value="${editing.end}" oninput="editField('end',this.value)"></div>
         </div>
         <div class="field"><div class="field-label">金額 (¥)</div><input type="number" class="field-input" value="${editing.amount}" oninput="editField('amount',Number(this.value))"></div>
+        <div class="field-label" style="margin-bottom:4px">カテゴリ</div>
+        <div class="form-status-btns" style="margin-bottom:10px">
+          ${Object.entries(CATEGORY).map(([k,v])=>{
+            const catKey=editing.category||"design";
+            const isActive=catKey===k;
+            const catColors={design:"#e6c84a",farm:"#4aad72"};
+            const cc=catColors[k]||"#87b7c4";
+            return `<button class="form-status-btn${isActive?' active':''}" style="${isActive?'color:'+cc+';border-color:'+cc:''}" onclick="editField('category','${k}');render()">${v.icon} ${v.label}</button>`;
+          }).join("")}
+        </div>
         <div class="field-label" style="margin-bottom:4px">ステータス</div>
         <div class="form-status-btns">
           ${Object.entries(STATUS).map(([k,v])=>`<button class="form-status-btn${editing.status===k?' active':''}" style="${editing.status===k?'color:'+v.color+';border-color:'+v.color:''}" onclick="editField('status','${k}');render()">${v.label}</button>`).join("")}
@@ -473,6 +522,7 @@ function render(){
 function prevM(){ if(state.month===0){state.year--;state.month=11;}else state.month--; render(); }
 function nextM(){ if(state.month===11){state.year++;state.month=0;}else state.month++; render(); }
 function goToday(){ const t=new Date(); state.year=t.getFullYear(); state.month=t.getMonth(); render(); }
+function setCatFilter(f){ state.categoryFilter=f; state.selectedId=null; render(); }
 
 function selectP(id){ state.selectedId=state.selectedId===id?null:id; render(); }
 function setStatus(s){ const p=state.projects.find(x=>x.id===state.selectedId); if(p){p.status=s; saveProjects(state.projects); render();} }
@@ -481,7 +531,7 @@ function setNotes(v){ const p=state.projects.find(x=>x.id===state.selectedId); i
 function openNew(){
   const t=new Date(); const s=new Date(state.year,state.month,Math.min(t.getDate(),28));
   const e=new Date(s); e.setDate(e.getDate()+7);
-  state.editing={id:"",name:"",client:"",start:toDS(s),end:toDS(e),amount:0,status:"waiting",notes:""};
+  state.editing={id:"",name:"",client:"",start:toDS(s),end:toDS(e),amount:0,status:"waiting",category:"design",notes:""};
   state.showForm=true; render();
 }
 function openEdit(id){ const p=state.projects.find(x=>x.id===id); if(p){state.editing={...p}; state.showForm=true; render();} }
@@ -554,11 +604,13 @@ function handleImport(e){
 }
 
 function exportCSV(){
-  const header=["案件名","クライアント","開始日","終了日","金額","ステータス","メモ"];
+  const header=["案件名","クライアント","カテゴリ","開始日","終了日","金額","ステータス","メモ"];
   const statusLabel={waiting:"着手前",active:"進行中",done:"完了"};
+  const catLabel={design:"デザイン",farm:"農業"};
   const rows=state.projects.map(p=>[
     csvEscape(p.name),
     csvEscape(p.client||""),
+    catLabel[p.category||"design"]||p.category||"デザイン",
     p.start,
     p.end,
     p.amount||0,
