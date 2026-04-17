@@ -252,9 +252,10 @@ input[type="file"].hidden-input { display: none; }
 .cat-tab:first-child { border-radius: 8px 0 0 8px; }
 .cat-tab:last-child  { border-radius: 0 8px 8px 0; }
 .cat-tab:not(:first-child) { border-left: none; }
-.cat-tab.active-all    { background: var(--c-deep);  border-color: var(--c-deep);  color: #fff; }
-.cat-tab.active-design { background: #8a67a5; border-color: #8a67a5; color: #fff; }
-.cat-tab.active-farm   { background: #78b795; border-color: #78b795; color: #fff; }
+.cat-tab.active-all      { background: var(--c-deep);  border-color: var(--c-deep);  color: #fff; }
+.cat-tab.active-design   { background: #8a67a5; border-color: #8a67a5; color: #fff; }
+.cat-tab.active-farm     { background: #78b795; border-color: #78b795; color: #fff; }
+.cat-tab.active-schedule { background: #f0a04b; border-color: #f0a04b; color: #fff; }
 </style>
 </head>
 <body>
@@ -270,18 +271,24 @@ const STATUS = {
 const CATEGORY = {
   design:    { label:"デザイン", icon:"🎨" },
   farm:      { label:"農業",     icon:"🌾" },
+  schedule:  { label:"予定",     icon:"📅" },
 };
 // 6色マトリクス: [カテゴリ][ステータス]
 const BAR_COLOR_MAP = {
   design: {
-    waiting: { main:"#8a67a5", sub:"#6f4f8a" },  // デザイン着手前
-    active:  { main:"#347fb7", sub:"#1a659d" },  // デザイン進行中
-    done:    { main:"#b8c4c8", sub:"#9eb0b5" },  // デザイン完了（共通グレー）
+    waiting: { main:"#8a67a5", sub:"#6f4f8a" },
+    active:  { main:"#347fb7", sub:"#1a659d" },
+    done:    { main:"#b8c4c8", sub:"#9eb0b5" },
   },
   farm: {
-    waiting: { main:"#cb8f6e", sub:"#b37455" },  // 農業着手前
-    active:  { main:"#79ac69", sub:"#5e9250" },  // 農業進行中
-    done:    { main:"#b8c4c8", sub:"#9eb0b5" },  // 農業完了（共通グレー）
+    waiting: { main:"#c4725a", sub:"#ad5a43" },
+    active:  { main:"#79ac69", sub:"#5e9250" },
+    done:    { main:"#b8c4c8", sub:"#9eb0b5" },
+  },
+  schedule: {
+    waiting: { main:"#f0a04b", sub:"#d8863a" },
+    active:  { main:"#f0a04b", sub:"#d8863a" },
+    done:    { main:"#b8c4c8", sub:"#9eb0b5" },
   },
 };
 const DOW = ["日","月","火","水","木","金","土"];
@@ -354,7 +361,6 @@ function render(){
   const {year,month,projects,selectedId,showForm,editing,confirmDeleteId,categoryFilter}=state;
   const today=new Date();
   const weeks=getWeeks(year,month);
-  // カテゴリフィルター適用
   const filteredProjects = categoryFilter==="all" ? projects : projects.filter(p=>(p.category||"design")===categoryFilter);
   const sel=filteredProjects.find(p=>p.id===selectedId)||null;
   const mTotal=filteredProjects.filter(p=>{
@@ -380,6 +386,7 @@ function render(){
     <button class="cat-tab${categoryFilter==="all"?" active-all":""}" onclick="setCatFilter('all')">🗂 全体</button>
     <button class="cat-tab${categoryFilter==="design"?" active-design":""}" onclick="setCatFilter('design')">🎨 デザイン</button>
     <button class="cat-tab${categoryFilter==="farm"?" active-farm":""}" onclick="setCatFilter('farm')">🌾 農業</button>
+    <button class="cat-tab${categoryFilter==="schedule"?" active-schedule":""}" onclick="setCatFilter('schedule')">📅 予定</button>
   </div>
   <div class="dow-row">${DOW.map((d,i)=>`<div class="dow-cell${i===0?' sun':''}${i===6?' sat':''}">${d}</div>`).join("")}</div>
   <div class="cal-body" style="padding-bottom:${sel&&!showForm?'260px':'20px'}">`;
@@ -459,7 +466,7 @@ function render(){
           ${Object.entries(CATEGORY).map(([k,v])=>{
             const catKey=editing.category||"design";
             const isActive=catKey===k;
-            const catColors={design:"#e6c84a",farm:"#4aad72"};
+            const catColors={design:"#8a67a5",farm:"#79ac69",schedule:"#f0a04b"};
             const cc=catColors[k]||"#87b7c4";
             return `<button class="form-status-btn${isActive?' active':''}" style="${isActive?'color:'+cc+';border-color:'+cc:''}" onclick="editField('category','${k}');render()">${v.icon} ${v.label}</button>`;
           }).join("")}
@@ -531,7 +538,8 @@ function setNotes(v){ const p=state.projects.find(x=>x.id===state.selectedId); i
 function openNew(){
   const t=new Date(); const s=new Date(state.year,state.month,Math.min(t.getDate(),28));
   const e=new Date(s); e.setDate(e.getDate()+7);
-  state.editing={id:"",name:"",client:"",start:toDS(s),end:toDS(e),amount:0,status:"waiting",category:"design",notes:""};
+  const defaultCat=["design","farm","schedule"].includes(state.categoryFilter)?state.categoryFilter:"design";
+  state.editing={id:"",name:"",client:"",start:toDS(s),end:toDS(e),amount:0,status:"waiting",category:defaultCat,notes:""};
   state.showForm=true; render();
 }
 function openEdit(id){ const p=state.projects.find(x=>x.id===id); if(p){state.editing={...p}; state.showForm=true; render();} }
